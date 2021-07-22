@@ -164,7 +164,7 @@ uint32_t htonl (uint32_t __hostlong);
 uint16_t htons (uint16_t __hostshort);
 ```
 
-
+只有整数需要考虑字节序，字符串不需要考虑字节序的问题。
 
 
 

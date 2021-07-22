@@ -1,8 +1,8 @@
+#include <arpa/inet.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <signal.h>
-#include <arpa/inet.h>
 #include <sys/errno.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
@@ -30,7 +30,6 @@ int main(int argc, char *arg[]) {
     /* 1.建立socket连接 */
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (-1 == sockfd) {
-        // printf("Create socket error(%d): %s\n", errno, strerror(errno));
         perror("create socket error");
         return -1;
     }
@@ -45,13 +44,11 @@ int main(int argc, char *arg[]) {
     // host to net short  16位整型
     servaddr.sin_port = htons(DEFAULT_PORT);
     if (-1 == bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) {
-        // printf("Bind error (%d): %s\n", errno, strerror(errno));
         perror("bind error");
         return -1;
     }
     /* 3.监听端口 */
     if (-1 == listen(sockfd, MAXLINK)) { // MAXLINK最大连接数量,之后的连接会排队等待
-        // printf("Listen error(%d): %s\n", errno, strerror(errno));
         perror("listen error");
         return -1;
     }
@@ -59,19 +56,35 @@ int main(int argc, char *arg[]) {
     printf("Listening...\n");
     while (true) {
         signal(SIGINT, stopruning); //在control-C的时候关闭服务器
-        /* 4.等待客户端连接 */
-        connfd = accept(sockfd, NULL, NULL);  // 后面的NULL保存了客户端的地址信息
+        /* 4.阻塞等待客户端连接 */
+        struct sockaddr_in connaddr;
+        socklen_t addrlen = sizeof(connaddr);
+        connfd = accept(sockfd, (struct sockaddr *)&connaddr, &addrlen); // 后面的NULL保存了客户端的地址信息
         if (-1 == connfd) {
-            printf("Accept error(%d): %s\n", errno, strerror(errno));
+            perror("Accept error");
             return -1;
         }
-        bzero(buff, BUFFSIZE);
-        // 6. 接收信息
-        recv(connfd, buff, BUFFSIZE - 1, 0);
-        printf("RECV: %s\n", buff);
-        send(connfd, buff, strlen(buff), 0);
-        // 7. 关闭连接
+        while (true) {
+            bzero(buff, BUFFSIZE);
+            // 6. 接收信息
+            int len = recv(connfd, buff, BUFFSIZE - 1, 0);
+            char ip[32];
+            inet_ntop(AF_INET, &connaddr.sin_addr.s_addr, ip, sizeof(ip));
+            printf("client IP: %s, port: %d  ", ip, ntohs(connaddr.sin_port));
+            if (len > 0) {
+                printf("RECV: %s\n", buff);
+                send(connfd, buff, strlen(buff), 0);
+            } else if (len == 0) {
+                printf("与客户端断开了连接\n");
+                break;
+            } else {
+                perror("recv");
+                break;
+            }
+            // 7. 关闭连接
+        }
         close(connfd);
     }
+    close(sockfd);
     return 0;
 }
