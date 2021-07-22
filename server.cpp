@@ -1,10 +1,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <netinet/in.h>
 #include <signal.h>
+#include <arpa/inet.h>
 #include <sys/errno.h>
-#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
 
