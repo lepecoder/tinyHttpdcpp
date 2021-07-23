@@ -1,16 +1,16 @@
 #include <arpa/inet.h>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <netinet/in.h>
-#include <signal.h>
 #include <sys/errno.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
 #define BUFFSIZE 2048
 #define SERVER_IP "127.0.0.1" // 指定服务端的IP
-#define SERVER_PORT 12343     // 指定服务端的port
+#define SERVER_PORT 12345     // 指定服务端的port
 int sockfd;                   // 与服务端通信的套接字
 void stopServerRunning(int p) {
     printf("int p=%d, SIGINT=2    ", p);
