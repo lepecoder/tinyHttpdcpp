@@ -18,7 +18,6 @@
 
 typedef struct SockInfo {
     int fd;                  // 与客户端通信的socket
-    pthread_t tid;           // 线程ID
     struct sockaddr_in addr; // 地址信息
 } ssockinfo;
 ssockinfo infos[MAXLINK];
