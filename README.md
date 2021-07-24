@@ -82,5 +82,6 @@ this_thread::get_id();
 t1.join();
 // 分离线程，自行释放资源
 t1.detach();
+
 ```
 

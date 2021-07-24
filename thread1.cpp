@@ -1,27 +1,58 @@
-#include <chrono>
-#include <iostream>
+#include <mutex>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <thread>
-using namespace std;
+#include <unistd.h>
 
-void func(int num, string str) {
-    for (int i = 0; i < 10; ++i) {
-        cout << "子线程: i = " << i << "num: " << num << ", str: " << str << endl;
+#define MAX 100
+// 全局变量
+int number;
+
+// 创建一把互斥锁
+// 全局变量, 多个线程共享
+std::mutex mtx;
+
+// 线程处理函数
+void funcA_num() {
+    for (int i = 0; i < MAX; ++i) {
+        // 如果线程A加锁成功, 不阻塞
+        // 如果B加锁成功, 线程A阻塞
+        mtx.lock();
+        int cur = number;
+        cur++;
+        usleep(10);
+        number = cur;
+        mtx.unlock();
+        printf("Thread A, id = %lu, number = %d\n", pthread_self(), number);
     }
 }
 
-void func1() {
-    for (int i = 0; i < 10; ++i) {
-        cout << "子线程: i = " << i << endl;
+void funcB_num() {
+    for (int i = 0; i < MAX; ++i) {
+        // a加锁成功, b线程访问这把锁的时候是锁定的
+        // 线程B先阻塞, a线程解锁之后阻塞解除
+        // 线程B加锁成功了
+        mtx.lock();
+        int cur = number;
+        cur++;
+        number = cur;
+        mtx.unlock();
+        printf("Thread B, id = %lu, number = %d\n", pthread_self(), number);
+        usleep(5);
     }
 }
 
-int main() {
-    cout << "主线程的线程ID: " << this_thread::get_id() << endl;
-    thread t(func, 520, "i love you");
-    thread t1(func1);
-    cout << "线程t 的线程ID: " << t.get_id() << endl;
-    cout << "线程t1的线程ID: " << t1.get_id() << endl;
-    t.join();
+int main(int argc, const char *argv[]) {
+    std::thread t1(funcA_num), t2(funcB_num);
+
+    // 阻塞，资源回收
     t1.join();
+    t2.join();
+    // 销毁互斥锁
+    // 线程销毁之后, 再去释放互斥锁
+
     return 0;
 }
