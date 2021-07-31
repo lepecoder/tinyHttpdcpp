@@ -2,11 +2,7 @@
 
 [Tiny HTTPd](https://sourceforge.net/projects/tinyhttpd/) implemented by C++
 
-虽然说是用C++实现，但很多方法也没有C++风格的库函数，所以，可能就面向对象的思想吧
-
-
-
-
+~~虽然说是用C++实现，但很多方法也没有C++风格的库函数，所以，可能就面向对象的思想吧~~
 
 ## 版本
 
@@ -85,8 +81,17 @@ t1.detach();
 
 ```
 
-
-
 #### v_0.6
 
 线程池版服务器，顺便增加了makefile文件，线程池的实现在[这里](https://github.com/lepecoder/threadpool).
+
+
+
+#### v_0.7
+
+参考`tinyhttpd`实现web服务
+
+
+
+
+
