@@ -1,3 +1,4 @@
+#include "threadpool.hpp"
 #include <arpa/inet.h>
 #include <cstdio>
 #include <cstdlib>
@@ -5,17 +6,39 @@
 #include <signal.h>
 #include <sys/errno.h>
 #include <sys/unistd.h>
-#include <thread>
+// #include <thread>
 
 /****************************************
  * 多线程并发服务器                        *
- * 主线程通过ACCEPT监听客户端的请求         *
+ * 主线程通过ACCEPT监听客户端的请求          *
  * 如果有请求，就创建子线程与客户端通信       *
  ****************************************/
 #define BUFFSIZE 2048
 #define MAXLINK 128
 
-void working(int cfd, sockaddr_in caddr);
+void working(int cfd, sockaddr_in caddr) {
+    char buff[BUFFSIZE]; // 用于收发数据
+    while (true) {
+        bzero(buff, BUFFSIZE);
+        // 6. 接收信息
+        int len = recv(cfd, buff, BUFFSIZE - 1, 0);
+        char ip[32];
+        inet_ntop(AF_INET, &caddr.sin_addr.s_addr, ip, sizeof(ip));
+        printf("client IP: %s, port: %d  ", ip, ntohs(caddr.sin_port));
+        if (len > 0) {
+            printf("RECV: %s\n", buff);
+            send(cfd, buff, strlen(buff), 0);
+        } else if (len == 0) {
+            printf("与客户端断开了连接\n");
+            break;
+        } else {
+            perror("recv");
+            break;
+        }
+    }
+    // 7. 关闭连接
+    close(cfd);
+}
 
 int sockfd; // 用于监听的文件描述符
 uint32_t DEFAULT_PORT = 12345;
@@ -28,6 +51,7 @@ void stopServerRunning(int p) {
 }
 
 int main(int argc, char *arg[]) {
+    ThreadPool pool(10);
     if (argc > 1) {
         printf("%s\n", arg[1]);
         DEFAULT_PORT = atoi((arg[1]));
@@ -72,33 +96,12 @@ int main(int argc, char *arg[]) {
             return -1;
         }
         // 创建线程
-        std::thread t1(working, cfd, caddr);
-        t1.detach(); // 分离，主线程不必等待t1的结束
+        // std::thread t1(working, cfd, caddr);
+        // t1.detach(); // 分离，主线程不必等待t1的结束
+        pool.submit(working, cfd, caddr);
     }
+    pool.wait();     // 等待线程池中任务结束
+    pool.shutdown(); // 等待线程池中线程结束
     close(sockfd);
     return 0;
-}
-
-void working(int cfd, sockaddr_in caddr) {
-    char buff[BUFFSIZE]; // 用于收发数据
-    while (true) {
-        bzero(buff, BUFFSIZE);
-        // 6. 接收信息
-        int len = recv(cfd, buff, BUFFSIZE - 1, 0);
-        char ip[32];
-        inet_ntop(AF_INET, &caddr.sin_addr.s_addr, ip, sizeof(ip));
-        printf("client IP: %s, port: %d  ", ip, ntohs(caddr.sin_port));
-        if (len > 0) {
-            printf("RECV: %s\n", buff);
-            send(cfd, buff, strlen(buff), 0);
-        } else if (len == 0) {
-            printf("与客户端断开了连接\n");
-            break;
-        } else {
-            perror("recv");
-            break;
-        }
-        // 7. 关闭连接
-    }
-    close(cfd);
 }
