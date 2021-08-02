@@ -1,178 +1,101 @@
-# tinyhttpdcpp
+A mirror for tinyhttpd(Tinyhttpd非官方镜像,Fork自[sourceForge](https://sourceforge.net/projects/tiny-httpd/),仅供学习)
 
-## 前置知识
+测试CGI时需要本机安装PERL，同时安装perl-cgi
 
-### CGI脚本
-
-Common Gateway Interface，不是一门编程语言，是网页表单与程序之间的通信协议，可以用任何语言编写CGI脚本。
-
-**工作流程**
-
-1. 读取用于提交的表单信息
-2. 处理信息
-3. 输出，返回html响应内容
-
-
-
-**intptr_t**: 
-
-int相关的类型在不同位数机器的平台下长度不同，使用int时也可以使用intptr_t来保证平台的通用性，它在不同的平台上编译时长度不同，但都是标准的平台字长。比如64位机器它的长度就是8字节，32位机器它的长度是4字节，使用它可以安全地进行整数与指针的转换运算，也就是说当需要将指针作为整数运算时，将它转换成intptr_t进行运算才是安全的。
-
-将指针转换为`intptr_t`类型，再赋值给int比较安全，可以将`intptr_t`看做合适长度的int类型。
-
-
-
-### socket编程
-
-网络上的两个程序通过一个双向的通信连接实现数据的交换，这个连接的一端称为一个socket。
-
-服务器和客户端用socket通信的过程
-
-![img](.assert/o_05232335-fb19fc7527e944d4845ef40831da4ec2.png)
-
-#### 服务端
-
-**1. 建立套接字对象**
-
-```cpp
-/*
-* _domain 套接字使用的协议族信息
-* _type 套接字的传输类型
-* __protocol 通信协议
-*/
-int socket(int __domain, int __type, int __protocol) __THROW;
+### Prepare 
+Compile for Linux
+```
+ To compile for Linux:
+  1) Comment out the #include <pthread.h> line.
+  2) Comment out the line that defines the variable newthread.
+  3) Comment out the two lines that run pthread_create().
+  4) Uncomment the line that runs accept_request().
+  5) Remove -lsocket from the Makefile.
 ```
 
-|  协议族  |                    含义                    |
-| :------: | :----------------------------------------: |
-| AF_INET  |         IPv4网络协议中采用的地址族         |
-| AF_INET6 |         IPv6网络协议中采用的地址族         |
-| AF_LOCAL | 本地通信中采用的UNIX协议的地址族（用的少） |
+<p>&nbsp; &nbsp; &nbsp;每个函数的作用：</p>
+<p>&nbsp; &nbsp; &nbsp;accept_request: &nbsp;处理从套接字上监听到的一个 HTTP 请求，在这里可以很大一部分地体现服务器处理请求流程。</p>
+<p>&nbsp; &nbsp; &nbsp;bad_request: 返回给客户端这是个错误请求，HTTP 状态吗 400 BAD REQUEST.</p>
+<p>&nbsp; &nbsp; &nbsp;cat: 读取服务器上某个文件写到 socket 套接字。</p>
+<p>&nbsp; &nbsp; &nbsp;cannot_execute: 主要处理发生在执行 cgi 程序时出现的错误。</p>
+<p>&nbsp; &nbsp; &nbsp;error_die: 把错误信息写到 perror 并退出。</p>
+<p>&nbsp; &nbsp; &nbsp;execute_cgi: 运行 cgi 程序的处理，也是个主要函数。</p>
+<p>&nbsp; &nbsp; &nbsp;get_line: 读取套接字的一行，把回车换行等情况都统一为换行符结束。</p>
+<p>&nbsp; &nbsp; &nbsp;headers: 把 HTTP 响应的头部写到套接字。</p>
+<p>&nbsp; &nbsp; &nbsp;not_found: 主要处理找不到请求的文件时的情况。</p>
+<p>&nbsp; &nbsp; &nbsp;sever_file: 调用 cat 把服务器文件返回给浏览器。</p>
+<p>&nbsp; &nbsp; &nbsp;startup: 初始化 httpd 服务，包括建立套接字，绑定端口，进行监听等。</p>
+<p>&nbsp; &nbsp; &nbsp;unimplemented: 返回给浏览器表明收到的 HTTP 请求所用的 method 不被支持。</p>
+<p><br>
+</p>
+<p>&nbsp; &nbsp; &nbsp;建议源码阅读顺序： main -&gt; startup -&gt; accept_request -&gt; execute_cgi, 通晓主要工作流程后再仔细把每个函数的源码看一看。</p>
+<p><br>
+</p>
+<h4>&nbsp; &nbsp; &nbsp;工作流程</h4>
+<p>&nbsp; &nbsp; &nbsp;（1） 服务器启动，在指定端口或随机选取端口绑定 httpd 服务。</p>
+<p>&nbsp; &nbsp; &nbsp;（2）收到一个 HTTP 请求时（其实就是 listen 的端口 accpet 的时候），派生一个线程运行 accept_request 函数。</p>
+<p>&nbsp; &nbsp; &nbsp;（3）取出 HTTP 请求中的 method (GET 或 POST) 和 url,。对于 GET 方法，如果有携带参数，则 query_string 指针指向 url 中 ？ 后面的 GET 参数。</p>
+<p>&nbsp; &nbsp; &nbsp;（4） &#26684;式化 url 到 path 数组，表示浏览器请求的服务器文件路径，在 tinyhttpd 中服务器文件是在 htdocs 文件夹下。当 url 以 / 结尾，或 url 是个目录，则默认在 path 中加上 index.html，表示访问主页。</p>
+<p>&nbsp; &nbsp; &nbsp;（5）如果文件路径合法，对于无参数的 GET 请求，直接输出服务器文件到浏览器，即用 HTTP &#26684;式写到套接字上，跳到（10）。其他情况（带参数 GET，POST 方式，url 为可执行文件），则调用 excute_cgi 函数执行 cgi 脚本。</p>
+<p>&nbsp; &nbsp; （6）读取整个 HTTP 请求并丢弃，如果是 POST 则找出 Content-Length. 把 HTTP 200 &nbsp;状态码写到套接字。</p>
+<p>&nbsp; &nbsp; （7） 建立两个管道，cgi_input 和 cgi_output, 并 fork 一个进程。</p>
+<p>&nbsp; &nbsp; （8） 在子进程中，把 STDOUT 重定向到 cgi_outputt 的写入端，把 STDIN 重定向到 cgi_input 的读取端，关闭 cgi_input 的写入端 和 cgi_output 的读取端，设置 request_method 的环境变量，GET 的话设置 query_string 的环境变量，POST 的话设置 content_length 的环境变量，这些环境变量都是为了给 cgi 脚本调用，接着用 execl 运行 cgi 程序。</p>
+<p>&nbsp; &nbsp; （9） 在父进程中，关闭 cgi_input 的读取端 和 cgi_output 的写入端，如果 POST 的话，把 POST 数据写入 cgi_input，已被重定向到 STDIN，读取 cgi_output 的管道输出到客户端，该管道输入是 STDOUT。接着关闭所有管道，等待子进程结束。这一部分比较乱，见下图说明：</p>
+<p><br>
+</p>
+<p><img src="http://img.blog.csdn.net/20141226173222750?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvamNqYzkxOA==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center" width="484" height="222" alt=""><br>
+</p>
+<p>图 1 &nbsp; &nbsp;管道初始状态</p>
+<p><br>
+</p>
+<p><img src="http://img.blog.csdn.net/20141226161119981?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvamNqYzkxOA==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center" alt=""></p>
+<p> 图 2 &nbsp;管道最终状态&nbsp;</p>
+<p><br>
+</p>
+<p>&nbsp; &nbsp; （10） 关闭与浏览器的连接，完成了一次 HTTP 请求与回应，因为 HTTP 是无连接的。</p>
+<p><br>
+</p>
 
-| 套接字传输类型 |                             含义                             |
-| :------------: | :----------------------------------------------------------: |
-|   SOCKET_RAW   | 原始套接字(SOCKET_RAW)允许对较低层次的协议直接访问，比如IP、 ICMP协议。 |
-|  SOCK_STREAM   |        SOCK_STREAM是数据流，一般为TCP/IP协议的编程。         |
-|   SOCK_DGRAM   |        SOCK_DGRAM是数据报，一般为UDP协议的网络编程；         |
+以下内容来自源作者:
 
-*通信协议：*
+  This software is copyright 1999 by J. David Blackstone.  Permission
+is granted to redistribute and modify this software under the terms of
+the GNU General Public License, available at http://www.gnu.org/ .
 
-常见的协议有IPPROTO_TCP、IPPTOTO_UDP。如果第二个参数选择了SOCK_STREAM，那么采用的协议就只能是IPPROTO_TCP；如果第二个参数选择的是SOCK_DGRAM，则采用的协议就只能是IPPTOTO_UDP。
+  If you use this software or examine the code, I would appreciate
+knowing and would be overjoyed to hear about it at
+jdavidb@sourceforge.net .
 
+  This software is not production quality.  It comes with no warranty
+of any kind, not even an implied warranty of fitness for a particular
+purpose.  I am not responsible for the damage that will likely result
+if you use this software on your computer system.
 
+  I wrote this webserver for an assignment in my networking class in
+1999.  We were told that at a bare minimum the server had to serve
+pages, and told that we would get extra credit for doing "extras."
+Perl had introduced me to a whole lot of UNIX functionality (I learned
+sockets and fork from Perl!), and O'Reilly's lion book on UNIX system
+calls plus O'Reilly's books on CGI and writing web clients in Perl got
+me thinking and I realized I could make my webserver support CGI with
+little trouble.
 
-**2. 向套接字分配网络地址**
+  Now, if you're a member of the Apache core group, you might not be
+impressed.  But my professor was blown over.  Try the color.cgi sample
+script and type in "chartreuse."  Made me seem smarter than I am, at
+any rate. :)
 
-```cpp
-/* 
-* __fd:socket描述字，也就是socket引用
-* myaddr:要绑定给sockfd的协议地址
-* __len:地址的长度
-*/
-int bind (int __fd, const struct sockaddr* myaddr, socklen_t __len)  __THROW;
-```
+  Apache it's not.  But I do hope that this program is a good
+educational tool for those interested in http/socket programming, as
+well as UNIX system calls.  (There's some textbook uses of pipes,
+environment variables, forks, and so on.)
 
-`__fd`是创建套接字时返回的对象，`myaddr`是网络地址信息
+  One last thing: if you look at my webserver or (are you out of
+mind?!?) use it, I would just be overjoyed to hear about it.  Please
+email me.  I probably won't really be releasing major updates, but if
+I help you learn something, I'd love to know!
 
-```cpp
-struct sockaddr_in{
-    sa_family_t sin_family;		//前面介绍的地址族
-    uint16_t sin_port;			//16位的TCP/UDP端口号
-    struct in_addr sin_addr;	//32位的IP地址
-    char sin_zero[8];			//不使用
-}
-```
+  Happy hacking!
 
-
-
-**3. 等待连接请求**
-
-给套接字分配所需信息之后，可以使用`listen()`监听客户端的连接请求，
-
-```cpp
-/* Prepare to accept connections on socket FD.
-   N connection requests will be queued before further requests are refused.
-   Returns 0 on success, -1 for errors.  */
-extern int listen (int __fd, int __n) __THROW;
-```
-
-
-
-**4. 处理客户端连接请求**
-
-在套接字`listen()`之后，客户端通过`connect()`发出连接，之前监听的套接字类似门卫，需要创建另外的套接字与客户端交互。
-
-
-
-**5. send/write发送信息**
-
-linux下发送函数
-
-```cpp
-/* Write N bytes of BUF to FD.  Return the number written, or -1.
-This function is a cancellation point and therefore not marked with __THROW.  */
- ssize_t write (int __fd, const void *__buf, size_t __n) ;
-```
-
-**6. recv/read接收信息**
-
-Linux下接收函数
-
-```cpp
-/* Read NBYTES into BUF from FD.  Return the
-   number read, -1 for errors or 0 for EOF.
-
-   This function is a cancellation point and therefore not marked with
-   __THROW.  */
-ssize_t read (int __fd, void *__buf, size_t __nbytes);
-```
-
-**7. 关闭连接**
-
-```cpp
-/* Close the file descriptor FD.
-
-   This function is a cancellation point and therefore not marked with
-   __THROW.  */
-int close (int __fd);  // 类似发送了EOF结束标志
-```
-
-
-
-客户端通过相似的方式创建连接，并通过`connect()`与服务端通信。
-
-### 字节序
-
-数据在内存中都是小端序存储，而在网络传输时都是大端序，而我们习惯的IP地址又是点分十进制，这样就会有一系列的转换函数。
-
-```cpp
-// 将char类型的IP地址转换为二进制
-int inet_aton(const char *__cp, struct in_addr *__inp);
-/*
-h代表主机字节序
-n代表网络字节序
-s代表short(4字节)
-l代表long(8字节)
-*/
-// network to host long
-uint32_t ntohl (uint32_t __netlong); 
-// network to host short
-uint16_t ntohs (uint16_t __netshort);
-// host to network long
-uint32_t htonl (uint32_t __hostlong);
-// host to network short
-uint16_t htons (uint16_t __hostshort);
-```
-
-只有整数需要考虑字节序，字符串不需要考虑字节序的问题。
-
-
-
-
-
-
-
-
-
-
+                                   J. David Blackstone
 

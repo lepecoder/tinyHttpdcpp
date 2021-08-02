@@ -2,7 +2,8 @@
 #include <cstdio>      // 输入输出流
 #include <cstdlib>     // 一些库函数
 #include <cstring>
-#include <ctype.h>      // 字符分类函数
+#include <ctype.h> // 字符分类函数
+#include <iostream>
 #include <netinet/in.h> // 定义sockaddr_in
 #include <pthread.h>    // 多线程
 #include <string>
@@ -12,6 +13,7 @@
 #include <sys/types.h>  // 数据类型定义
 #include <sys/wait.h>   // 等待子进程中断或结束
 #include <unistd.h>     // 提供文件、目录、程序及进程操作
+using namespace std;
 
 //宏定义，是否是空格
 #define ISspace(x) isspace((int)(x))
@@ -20,9 +22,10 @@
 
 //每次收到请求，创建一个线程来处理接受到的请求
 //把client_sock转成地址作为参数传入pthread_create
+//
 void *accept_request(void *arg);
 
-//错误请求
+// 错误请求,向客户端返回错误代码
 void bad_request(int);
 
 //读取文件
@@ -50,7 +53,7 @@ void not_found(int);
 //如果不是CGI文件，直接读取文件返回给请求的http客户端
 void serve_file(int, const char *);
 
-//开启tcp连接，绑定端口等操作
+// 初始化httpd服务，包括建立套接字，绑定端口，进行监听
 int startup(u_short *);
 
 //如果不是Get或者Post，就报方法没有实现
@@ -94,17 +97,16 @@ void unimplemented(int);
 
 void *accept_request(void *arg) {
     /* 接收客户端的请求，并处理请求内容 */
-    // socket
-    int client = (intptr_t)arg;
-    char buf[1024];
-    int numchars;
-    char method[255];
-    char url[255];
-    char path[512];
-    size_t i, j;
+    int client = (intptr_t)arg; // 与客户端的连接
+    char buf[1024];             // socket接收到的内容
+    int numchars;               // socket接收到的内容长度
+    char method[255];           // 请求方法GET or POST
+    char url[255];              // 请求url
+    char path[512];             // 文件的路径
+    size_t i, j;                // 两个指针 unsigned long in x86_64
     struct stat st;
-    int cgi = 0; /* becomes true if server decides this is a CGI
-                  * program */
+    bool cgi = false; /* becomes true if server decides this is a CGI
+                       * program */
     char *query_string = NULL;
     //根据上面的Get请求，可以看到这边就是取第一行
     //这边都是在处理第一条http信息
@@ -152,14 +154,14 @@ void *accept_request(void *arg) {
         query_string = url;
         while ((*query_string != '?') && (*query_string != '\0'))
             query_string++;
-        if (*query_string == '?') {
+        if (*query_string == '?') { // 表示有参数的GET请求
             cgi = 1;
             *query_string = '\0';
             query_string++;
         }
     }
 
-    //路径
+    // 在url前加上文件夹地址，构成文件路径
     sprintf(path, "htdocs%s", url);
 
     //默认地址，解析到的路径如果为/，则自动加上index.html
@@ -167,11 +169,10 @@ void *accept_request(void *arg) {
         strcat(path, "index.html");
 
     //获得文件信息
-    if (stat(path, &st) == -1) {
+    if (stat(path, &st) == -1) { // 获取文件状态，保存到st
         //把所有http信息读出然后丢弃
         while ((numchars > 0) && strcmp("\n", buf)) /* read & discard headers */
             numchars = get_line(client, buf, sizeof(buf));
-
         //没有找到
         not_found(client);
     } else {
@@ -223,7 +224,7 @@ void bad_request(int client) {
 void cat(int client, FILE *resource) {
     char buf[1024];
 
-    fgets(buf, sizeof(buf), resource);
+    fgets(buf, sizeof(buf), resource); // 从文件流中读取至多sizeof(buf)-1个字符
     //循环读
     while (!feof(resource)) {
         send(client, buf, strlen(buf), 0);
@@ -289,6 +290,7 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
     buf[0] = 'A';
     buf[1] = '\0';
 
+    /* 把余下的http请求读掉 */
     //忽略大小写比较字符串
     if (strcasecmp(method, "GET") == 0)
         //读取数据，把整个header都读掉，以为Get写死了直接读取index.html，没有必要分析余下的http信息了
@@ -316,7 +318,7 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
     sprintf(buf, "HTTP/1.0 200 OK\r\n");
     send(client, buf, strlen(buf), 0);
     //建立output管道
-    if (pipe(cgi_output) < 0) {
+    if (pipe(cgi_output) < 0) { // 创建一个匿名管道，得到两个文件描述符
         cannot_execute(client);
         return;
     }
@@ -410,6 +412,11 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
  *             the size of the buffer
  * Returns: the number of bytes stored (excluding null) */
 /**********************************************************************/
+/**********************************************************
+ * HTTP报文每行由\r\n结束，单独的\r是回车，而\n是换行符，最后一行是
+ * 单独的一个\r\n表示HTTP报文结束
+ * 读到\r\n算是一行，读到单独的\r也是一行，读到socket结束也是一行
+/*********************************************************/
 
 //得到一行数据,只要发现c为\n,就认为是一行结束，如果读到\r,再用MSG_PEEK的方式读入一个字符，如果是\n，从socket用读出
 //如果是下个字符则不处理，将c置为\n，结束。如果读到的数据为0中断，或者小于0，也视为结束，c置为\n
@@ -424,7 +431,7 @@ int get_line(int sock, char *buf, int size) {
         if (n > 0) {
             if (c == '\r') {
                 //偷窥一个字节，如果是\n就读走
-                n = recv(sock, &c, 1, MSG_PEEK);
+                n = recv(sock, &c, 1, MSG_PEEK); // MSG_PEEK的方式只是看一下下个字符，不会从缓冲区移走
                 /* DEBUG printf("%02X\n", c); */
                 if ((n > 0) && (c == '\n'))
                     recv(sock, &c, 1, 0);
@@ -435,6 +442,7 @@ int get_line(int sock, char *buf, int size) {
             buf[i] = c;
             i++;
         } else
+            // 在末尾添加\n
             c = '\n';
     }
     buf[i] = '\0';
@@ -508,27 +516,25 @@ void serve_file(int client, const char *filename) {
     //默认字符
     buf[0] = 'A';
     buf[1] = '\0';
-    while ((numchars > 0) && strcmp("\n", buf)) /* read & discard headers */
+    while ((numchars > 0) && strcmp("\n", buf)) {
+        // 一直读到http报文最后的一个空行
         numchars = get_line(client, buf, sizeof(buf));
+    }
 
     resource = fopen(filename, "r");
     if (resource == NULL)
-        not_found(client);
+        not_found(client); // 404错误
     else {
-        headers(client, filename);
-        cat(client, resource);
+        headers(client, filename); // 正常返回时的http头
+        cat(client, resource);     // 发送文件内容
     }
     fclose(resource);
 }
 
-/**********************************************************************/
-/* This function starts the process of listening for web connections
- * on a specified port.  If the port is 0, then dynamically allocate a
- * port and modify the original port variable to reflect the actual
- * port.
- * Parameters: pointer to variable containing the port to connect on
- * Returns: the socket */
-/**********************************************************************/
+/*******************************
+ * 传入端口号，如果端口号是0则随机端口。创建服务
+ * 套接字，绑定到端口上，并开启监听，返回服务套接字
+/*******************************/
 int startup(u_short *port) {
     int httpd = 0;
     struct sockaddr_in name;
@@ -599,8 +605,7 @@ int main(void) {
 
     server_sock = startup(&port);
     printf("httpd running on port %d\n", port);
-
-    while (1) {
+    while (true) {
         // 等待并接受客户端的连接请求, 建立新的连接, 会得到一个新的文件描述符(通信的)
         client_sock = accept(server_sock, (struct sockaddr *)&client_name, &client_name_len);
         if (client_sock == -1)
@@ -608,8 +613,8 @@ int main(void) {
 
         //每次收到请求，创建一个线程来处理接受到的请求
         //把client_sock转成地址作为参数传入pthread_create
-        if (pthread_create(&newthread, NULL, accept_request, (void *)(intptr_t)client_sock) != 0)
-            perror("pthread_create");
+        if (pthread_create(&newthread, NULL, accept_request, (void *)(intptr_t)client_sock) != 0) // 线程创建成功返回0
+            perror("pthread_create error");
     }
 
     close(server_sock);
